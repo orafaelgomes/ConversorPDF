@@ -7,6 +7,7 @@ from tkinter import filedialog, messagebox, ttk
 from pathlib import Path
 
 from ghostscript_bundle import get_ghostscript_command
+from importer import scan_folder
 
 
 def build_output_path(input_path: str, output_dir: str | None = None) -> Path:
@@ -38,12 +39,14 @@ class PdfAToolApp:
 
         file_menu = tk.Menu(menu_bar, tearoff=0)
         file_menu.add_command(label="Selecionar PDFs", command=self.select_pdfs)
+        file_menu.add_command(label="Selecionar pasta", command=self.select_folder)
         file_menu.add_separator()
         file_menu.add_command(label="Sair", command=self.root.destroy)
         menu_bar.add_cascade(label="Arquivo", menu=file_menu)
 
         action_menu = tk.Menu(menu_bar, tearoff=0)
         action_menu.add_command(label="Converter para PDF/A", command=self.start_conversion)
+        action_menu.add_command(label="Limpar fila", command=self.clear_queue)
         menu_bar.add_cascade(label="Ações", menu=action_menu)
 
         help_menu = tk.Menu(menu_bar, tearoff=0)
@@ -62,7 +65,7 @@ class PdfAToolApp:
 
         description = ttk.Label(
             main_frame,
-            text="Selecione vários arquivos PDF e converta em lote para PDF/A.",
+            text="Selecione arquivos ou pastas com PDFs e converta em lote para PDF/A.",
             wraplength=620,
         )
         description.pack(anchor="w", pady=(0, 18))
@@ -73,8 +76,17 @@ class PdfAToolApp:
         select_button = ttk.Button(button_frame, text="Selecionar PDFs", command=self.select_pdfs)
         select_button.pack(side="left", padx=(0, 8))
 
+        select_folder_button = ttk.Button(button_frame, text="Selecionar pasta", command=self.select_folder)
+        select_folder_button.pack(side="left", padx=(0, 8))
+
         output_button = ttk.Button(button_frame, text="Escolher pasta de saída", command=self.choose_output_dir)
         output_button.pack(side="left", padx=(0, 8))
+
+        remove_button = ttk.Button(button_frame, text="Remover selecionado", command=self.remove_selected)
+        remove_button.pack(side="left", padx=(0, 8))
+
+        clear_button = ttk.Button(button_frame, text="Limpar fila", command=self.clear_queue)
+        clear_button.pack(side="left", padx=(0, 8))
 
         convert_button = ttk.Button(button_frame, text="Converter para PDF/A", command=self.start_conversion)
         convert_button.pack(side="left")
@@ -87,6 +99,8 @@ class PdfAToolApp:
         self.cancel_button = cancel_button
         self.select_button = select_button
         self.output_button = output_button
+        self.remove_button = remove_button
+        self.clear_button = clear_button
         status_label = ttk.Label(main_frame, textvariable=self.status_var, foreground="#1f4e79")
         status_label.pack(anchor="w", pady=(8, 6))
 
@@ -129,6 +143,59 @@ class PdfAToolApp:
         self._append_log(f"{len(self.input_paths)} arquivos selecionados para conversão.")
         self._populate_file_list()
 
+    def select_folder(self) -> None:
+        folder_path = filedialog.askdirectory(title="Selecionar pasta de PDFs")
+        if not folder_path:
+            return
+
+        found_pdfs = [str(p) for p in scan_folder(folder_path, recursive=True, patterns=["*.pdf"])]
+        if not found_pdfs:
+            messagebox.showwarning("Aviso", "Nenhum arquivo PDF foi encontrado na pasta selecionada.")
+            self._append_log(f"Nenhum PDF encontrado em: {folder_path}")
+            return
+
+        self.input_paths = found_pdfs
+        self.output_path = str(build_output_path(self.input_paths[0], self.output_dir))
+        self.path_var.set(f"Arquivos selecionados: {len(self.input_paths)}")
+        self.output_var.set(f"Pasta de saída: {self.output_dir or Path(self.input_paths[0]).parent}")
+        self.status_var.set("Pasta importada. Pronto para converter em lote.")
+        self._append_log(f"{len(self.input_paths)} PDFs encontrados em {folder_path}.")
+        self._populate_file_list()
+
+    def remove_selected(self) -> None:
+        selected = self.file_tree.selection()
+        if not selected:
+            messagebox.showinfo("Info", "Selecione um item para remover da fila.")
+            return
+
+        removed = []
+        for item_id in selected:
+            if item_id in self.input_paths:
+                removed.append(item_id)
+            self.file_tree.delete(item_id)
+
+        if removed:
+            self.input_paths = [path for path in self.input_paths if path not in removed]
+            for path in removed:
+                self.file_items.pop(path, None)
+            self.path_var.set(f"Arquivos selecionados: {len(self.input_paths)}")
+            self.status_var.set("Itens removidos da fila de trabalho.")
+            self._append_log(f"Removido(s) {len(removed)} item(ns) da fila de conversão.")
+        else:
+            self._append_log("Nenhum item válido selecionado para remoção.")
+
+    def clear_queue(self) -> None:
+        if not self.input_paths:
+            messagebox.showinfo("Info", "A fila de trabalho já está vazia.")
+            return
+
+        self.input_paths = []
+        self.file_items.clear()
+        self.file_tree.delete(*self.file_tree.get_children())
+        self.path_var.set("Arquivos selecionados: 0")
+        self.status_var.set("Fila de trabalho limpa.")
+        self._append_log("Fila de trabalho completamente limpa.")
+
     def choose_output_dir(self) -> None:
         selected_dir = filedialog.askdirectory(title="Escolher pasta de saída")
         if not selected_dir:
@@ -147,7 +214,7 @@ class PdfAToolApp:
         self.file_items.clear()
 
         for file_path in self.input_paths:
-            item_id = self.file_tree.insert("", "end", values=(Path(file_path).name, "Pendente"))
+            item_id = self.file_tree.insert("", "end", iid=file_path, values=(Path(file_path).name, "Pendente"))
             self.file_items[file_path] = item_id
 
     def _mark_file_status(self, input_path: str, status: str) -> None:

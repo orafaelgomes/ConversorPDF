@@ -1,0 +1,30 @@
+# Python environment
+.venv/
+
+# PyInstaller build artifacts
+build/
+dist/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# pytest cache
+.pytest_cache/
+
+# Output folders
+output/
+
+# Logs
+logs/
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# VS Code
+.vscode/
+
+# Temporary files
+*.log
