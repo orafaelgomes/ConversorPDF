@@ -101,7 +101,8 @@ python -m pytest -q
 - CI configurado em `.github/workflows/python-ci.yml`.
 - Release checklist em `RELEASE_CHECKLIST.md`.
 - Use `pyinstaller --noconsole --onefile main.py` para empacotar a aplicação.
-- Inclua `gs10071w64.exe` ou instalador de Ghostscript junto ao artefato de release.
+- Inclua um instalador de Ghostscript ou forneça instruções de download em seu release:
+  https://www.ghostscript.com/download.html
 
 ## Dependências
 
